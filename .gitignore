@@ -1,0 +1,8 @@
+extracted_clips/
+runs/
+screen_recordings/
+trackers/
+videos/
+weights/
+yolov5/
+*.pt
