@@ -46,6 +46,103 @@ logging.getLogger().removeHandler(logging.getLogger().handlers[0])
 
 from sklearn.linear_model import RANSACRegressor
 
+def centre(bbox):
+    """bbox is an np array"""
+    p1, p2 = (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3]))
+    center_x = int((p1[0]+p2[0])/2)
+    center_y = int((p1[1]+p2[1])/2)
+    return center_x, center_y
+
+
+def ball_vs_line(l1, l2, pt):
+    """ calculate on which side of the line the ball is"""
+    # line
+    x1 = l1[0]
+    y1 = l1[1]
+    x2 = l2[0]
+    y2 = l2[1]
+
+    slope = (y2-y1)/(x2-x1) 
+    intercept = -slope*x1 + y1   
+
+    lhs = pt[1]
+    rhs = slope*pt[0]+intercept  
+
+    if lhs > rhs:
+        return True # above the line
+    else:
+        return False # below the line
+
+
+def line_intersection(p1, p2, p3, p4):
+    """ calculate intersection point of two lines
+        line1: p1, p2
+        line2: p3, p4
+    """
+    x1 = p1[0]
+    y1 = p1[1]
+    x2 = p2[0]
+    y2 = p2[1]
+    x3 = p3[0]
+    y3 = p3[1]
+    x4 = p4[0]
+    y4 = p4[1]
+
+    # calculate the intersecting point of two lines  
+    # source: https://en.wikipedia.org/wiki/Line%E2%80%93line_intersection
+    # line1: (x1,y1) (x2,y2)
+    # line2: (x3,y3) (x4,y4)
+    intersect_x = ((x1*y2 - y1*x2)*(x3-x4) - (x1-x2)*(x3*y4 - y3*x4))/((x1-x2)*(y3-y4)-(y1-y2)*(x3-x4))
+    intersect_y = ((x1*y2 - y1*x2)*(y3-y4) - (y1-y2)*(x3*y4 - y3*x4))/((x1-x2)*(y3-y4)-(y1-y2)*(x3-x4))
+    
+    return intersect_x, intersect_y
+
+
+def traj_line_intersection(intersect_pt, goal_corners):
+    """ calculate whether the trajectory line intersection went through the goal post or through its right or left"""
+    gp_left = goal_corners[0]
+    gp_right = goal_corners[3]
+
+    if intersect_pt[1] > gp_right[1] and intersect_pt[0] > gp_right[0]:
+        cross_location = "right"
+    elif intersect_pt[1] < gp_left[1] and intersect_pt[0] < gp_left[0]:
+        cross_location = "left"
+    elif intersect_pt[1] >= gp_left[1] and intersect_pt[1] <= gp_right[1] and intersect_pt[0] <= gp_right[0] and intersect_pt[0] >= gp_left[0]:
+        cross_location = "inside"
+    else:
+        cross_location = "unknown"
+    
+    return cross_location
+
+
+def area(x1, y1, x2, y2, x3, y3):
+    return abs((x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)) / 2.0)
+
+
+def check(x1, y1, x2, y2, x3,
+		y3, x4, y4, x, y):
+	
+	"""check if the ball is inside the goal post or not"""
+	# Calculate area of rectangle ABCD
+	A = (area(x1, y1, x2, y2, x3, y3) +
+		area(x1, y1, x4, y4, x3, y3))
+
+	# Calculate area of triangle PAB
+	A1 = area(x, y, x1, y1, x2, y2)
+
+	# Calculate area of triangle PBC
+	A2 = area(x, y, x2, y2, x3, y3)
+
+	# Calculate area of triangle PCD
+	A3 = area(x, y, x3, y3, x4, y4)
+
+	# Calculate area of triangle PAD
+	A4 = area(x, y, x1, y1, x4, y4)
+
+	# Check if sum of A1, A2, A3
+	# and A4 is same as A
+	return (A == A1 + A2 + A3 + A4)
+
 
 def euclidean_distance(x1,y1,x2,y2):
 
@@ -179,12 +276,18 @@ def stabilization(gps, gp_queue, gp_queue1, im, im0, template, stab_gap):
         # draw the last line
         line_pts = last_line(goal_points)
         if len(line_pts) == 4:
-            cv2.line(template, (line_pts[0], line_pts[1]), (line_pts[2], line_pts[3]), 255, 2)
-        
+            cv2.line(template, (line_pts[0], line_pts[1]), (line_pts[2], line_pts[3]), (255,0,0), 2)
+    
+    else:
+        line_pts = []  
+        goal_points = []
+
     avg_xdiff = (x_diff1 + x_diff)/2
     avg_ydiff = (y_diff + y_diff1)/2
 
-    return avg_xdiff, avg_ydiff
+    # line_pts are two points of the line
+    # goal_points are 4 points of the goal post 
+    return avg_xdiff, avg_ydiff, line_pts, goal_points
 
 
 def fresh_start(queue):
@@ -304,7 +407,7 @@ def shot_detection(last_ball_x, last_ball_y, x_center, y_center, min_dist, last_
             im0 = cv2.resize(im0,(810,540),interpolation = cv2.INTER_LINEAR)
             output_canvas = np.concatenate((template, im0), axis=1)
             cv2.imshow('canvas',output_canvas)
-            cv2.waitKey(0)  # 1 millisecond
+            cv2.waitKey(1)  # 1 millisecond
             
     return traj_start, traj_end, shot_frame, shot_flag, last_speed, last_f, im0, template
 
@@ -568,11 +671,11 @@ def run(
         break
 
 
+    traj_points = []
+    line_flags = []
+    cross_locations = []
+    goal = False
     for frame_idx, (path, im, im0s, vid_cap, s) in enumerate(dataset):
-
-        # if frame_idx < 900:
-        #     last_f = frame_idx
-        #     continue
         
         template = np.full((h, w, 3), (255,255,255), dtype='uint8')
         
@@ -646,7 +749,7 @@ def run(
 
             ######################## goal post model ################################
                     
-            x_stab, y_stab  = stabilization(gps, gp_queue, gp_queue1, im, im0, template, stab_gap)
+            x_stab, y_stab, line_pts, goal_points  = stabilization(gps, gp_queue, gp_queue1, im, im0, template, stab_gap)
 
             ######################## goal post model ################################                    
 
@@ -686,7 +789,7 @@ def run(
     
                         bboxes = output[0:4]
                         print(bboxes)
-                        # import pdb; pdb.set_trace()
+
                         id = output[4]
                         cls = output[5]
 
@@ -709,10 +812,91 @@ def run(
                             # annotator.box_label(bboxes, label, color=colors(c, True))
                             # annotator_t.box_label(bboxes, label, color=colors(c, True))
                             
-                            # ball detections
+                            # draw bounding box around the ball
                             annotator.box_label(bboxes, label, color=(0,0,0))
                             annotator_t.box_label(bboxes, label, color=(0,0,0))
+
+                            # centre point of ball bounding box
+                            centre_x, centre_y = centre(bboxes)
+                            pt = (centre_x, centre_y) 
+                            traj_points.append(pt)
                             
+
+                            print("len(line_pts): ", len(line_pts))
+                            print("len(goal_points: ", len(goal_points))
+
+                            # determine on which side of the line ball is 
+                            if len(line_pts) == 4:
+                                line_flag = ball_vs_line(line_pts[:2], line_pts[2:], pt)
+                                line_flags.append(line_flag)
+                                print("line_flag: ", line_flag)
+
+                                # debug_img = np.full((h, w, 3), (255,255,255), dtype='uint8')
+                                # pts = np.array(goal_points)
+                                # pts = pts.reshape((-1, 1, 2))
+                                # cv2.polylines(debug_img, [pts], isClosed=True, color=(0,0,0), thickness=4)
+                                # cv2.line(debug_img, (line_pts[0], line_pts[1]), (line_pts[2], line_pts[3]), (255,0,0), 2)
+                                # cv2.circle(debug_img, (centre_x, centre_y), radius=2, color=(0,0,0), thickness=2)
+                                # cv2.putText(debug_img, txt, (50,50),cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 2, cv2.LINE_AA)
+                                # debug_img = cv2.resize(debug_img,(810,540),interpolation = cv2.INTER_LINEAR)
+                                # cv2.imshow('debug_img', debug_img)
+                                # cv2.waitKey(1)
+                                 
+                                if not line_flag and len(goal_points)==4:
+                                    # the ball has gone on the other side of the line
+                                    # check the intersection of the ball traj with the last line and if the intersection lies inside the goal post or not
+                                    # trajectory line is being considered at an interval of 5 frames
+                                    intersect_x, intersect_y = line_intersection(traj_points[-1], traj_points[-5], goal_points[0], goal_points[3]) 
+                                    cross_location = traj_line_intersection((intersect_x,intersect_y), goal_points) 
+                                    cross_locations.append(cross_location)
+                                    
+                                    if cross_location == 'right' or cross_location == 'left':
+                                        print("it's a shot off target")
+                                        text = "it's a shot off target"
+                                        
+                                    elif cross_location == 'inside':
+                                        print("it is a Goal")
+                                        text = "it is a Goal"
+                                        # make sure the ball stays inside, for all future frames
+                                        # check the intersection of the ball with the goal post
+                                    else:
+                                        print("unknown cross location")
+                                        text = "unknown cross location"
+
+                                    # check for goal
+                                    # is_in_goalpost = check(goal_points[0][0], goal_points[0][1], goal_points[1][0], goal_points[1][1], goal_points[2][0], goal_points[2][1], goal_points[3][0], goal_points[3][1], centre_x, centre_y)
+                                    # if is_in_goalpost:
+                                    #     txt = "ball is inside the goalpost"
+                                    # else:
+                                    #     txt = "ball is not in the goalpost"
+                                    
+                                    # debugging, draw goal post and ball centre point
+                                    # debug_img = np.full((h, w, 3), (255,255,255), dtype='uint8')
+                                    # pts = np.array(goal_points)
+                                    # pts = pts.reshape((-1, 1, 2))
+                                    # cv2.polylines(debug_img, [pts], isClosed=True, color=(0,0,0), thickness=4)
+                                    # cv2.line(debug_img, (line_pts[0], line_pts[1]), (line_pts[2], line_pts[3]), (255,0,0), 2)
+                                    # cv2.circle(debug_img, (centre_x, centre_y), radius=2, color=(0,0,0), thickness=2)
+                                    # cv2.putText(debug_img, txt, (50,50),cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 2, cv2.LINE_AA)
+                                    # debug_img = cv2.resize(debug_img,(810,540),interpolation = cv2.INTER_LINEAR)
+                                    # cv2.imshow('debug_img', debug_img)
+                                    # cv2.waitKey(1)
+                                    
+                                    
+                                    # if is_in_goalpost:
+                                    #     text = "it is a Goal"
+                                    
+                                    # if is_in_goalpost or cross_location in ["right", "left", "inside"]:
+                                    #     cv2.putText(im0, text, (50,50),cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 2, cv2.LINE_AA)
+                                    #     cv2.putText(template, text, (50,50),cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 2, cv2.LINE_AA)
+                                    
+                                    cv2.putText(template, text, (50,50),cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 2, cv2.LINE_AA)
+                                    template = cv2.resize(template,(810,540),interpolation = cv2.INTER_LINEAR)
+                                    im0 = cv2.resize(im0,(810,540),interpolation = cv2.INTER_LINEAR)
+                                    output_canvas = np.concatenate((template, im0), axis=1)
+                                    cv2.imshow('canvas',output_canvas)
+                                    cv2.waitKey(0)
+
                             all_detections.append(bboxes)
                             #the function 
 
