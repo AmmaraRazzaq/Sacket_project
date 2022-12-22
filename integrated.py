@@ -831,37 +831,44 @@ def run(
                                 line_flags.append(line_flag)
                                 print("line_flag: ", line_flag)
 
-                                # debug_img = np.full((h, w, 3), (255,255,255), dtype='uint8')
+                                debug_img = np.full((h, w, 3), (255,255,255), dtype='uint8')
                                 # pts = np.array(goal_points)
                                 # pts = pts.reshape((-1, 1, 2))
                                 # cv2.polylines(debug_img, [pts], isClosed=True, color=(0,0,0), thickness=4)
-                                # cv2.line(debug_img, (line_pts[0], line_pts[1]), (line_pts[2], line_pts[3]), (255,0,0), 2)
-                                # cv2.circle(debug_img, (centre_x, centre_y), radius=2, color=(0,0,0), thickness=2)
-                                # cv2.putText(debug_img, txt, (50,50),cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 2, cv2.LINE_AA)
-                                # debug_img = cv2.resize(debug_img,(810,540),interpolation = cv2.INTER_LINEAR)
-                                # cv2.imshow('debug_img', debug_img)
-                                # cv2.waitKey(1)
+                                cv2.line(debug_img, (line_pts[0], line_pts[1]), (line_pts[2], line_pts[3]), (255,0,0), 2)
+                                cv2.circle(debug_img, (centre_x, centre_y), radius=2, color=(0,0,0), thickness=2)
+                                cv2.putText(debug_img, str(line_flag), (50,50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 2, cv2.LINE_AA)
+                                debug_img = cv2.resize(debug_img,(810,540),interpolation = cv2.INTER_LINEAR)
+                                cv2.imshow('debug_img', debug_img)
+                                cv2.waitKey(0)
+                            else:
+                                # blank image because line is not visible
+                                debug_img = np.full((h, w, 3), (255,255,255), dtype='uint8')
+                                debug_img = cv2.resize(debug_img,(810,540),interpolation = cv2.INTER_LINEAR)
+                                cv2.imshow('debug_img', debug_img)
+                                cv2.waitKey(0)
+
                                  
-                                if not line_flag and len(goal_points)==4:
-                                    # the ball has gone on the other side of the line
-                                    # check the intersection of the ball traj with the last line and if the intersection lies inside the goal post or not
-                                    # trajectory line is being considered at an interval of 5 frames
-                                    intersect_x, intersect_y = line_intersection(traj_points[-1], traj_points[-5], goal_points[0], goal_points[3]) 
-                                    cross_location = traj_line_intersection((intersect_x,intersect_y), goal_points) 
-                                    cross_locations.append(cross_location)
+                                # if not line_flag and len(goal_points)==4:
+                                #     # the ball has gone on the other side of the line
+                                #     # check the intersection of the ball traj with the last line and if the intersection lies inside the goal post or not
+                                #     # trajectory line is being considered at an interval of 5 frames
+                                #     intersect_x, intersect_y = line_intersection(traj_points[-1], traj_points[-5], goal_points[0], goal_points[3]) 
+                                #     cross_location = traj_line_intersection((intersect_x,intersect_y), goal_points) 
+                                #     cross_locations.append(cross_location)
                                     
-                                    if cross_location == 'right' or cross_location == 'left':
-                                        print("it's a shot off target")
-                                        text = "it's a shot off target"
+                                #     if cross_location == 'right' or cross_location == 'left':
+                                #         print("it's a shot off target")
+                                #         text = "it's a shot off target"
                                         
-                                    elif cross_location == 'inside':
-                                        print("it is a Goal")
-                                        text = "it is a Goal"
-                                        # make sure the ball stays inside, for all future frames
-                                        # check the intersection of the ball with the goal post
-                                    else:
-                                        print("unknown cross location")
-                                        text = "unknown cross location"
+                                #     elif cross_location == 'inside':
+                                #         print("it is a Goal")
+                                #         text = "it is a Goal"
+                                #         # make sure the ball stays inside, for all future frames
+                                #         # check the intersection of the ball with the goal post
+                                #     else:
+                                #         print("unknown cross location")
+                                #         text = "unknown cross location"
 
                                     # check for goal
                                     # is_in_goalpost = check(goal_points[0][0], goal_points[0][1], goal_points[1][0], goal_points[1][1], goal_points[2][0], goal_points[2][1], goal_points[3][0], goal_points[3][1], centre_x, centre_y)
@@ -890,12 +897,12 @@ def run(
                                     #     cv2.putText(im0, text, (50,50),cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 2, cv2.LINE_AA)
                                     #     cv2.putText(template, text, (50,50),cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 2, cv2.LINE_AA)
                                     
-                                    cv2.putText(template, text, (50,50),cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 2, cv2.LINE_AA)
-                                    template = cv2.resize(template,(810,540),interpolation = cv2.INTER_LINEAR)
-                                    im0 = cv2.resize(im0,(810,540),interpolation = cv2.INTER_LINEAR)
-                                    output_canvas = np.concatenate((template, im0), axis=1)
-                                    cv2.imshow('canvas',output_canvas)
-                                    cv2.waitKey(0)
+                                    # cv2.putText(template, text, (50,50),cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 2, cv2.LINE_AA)
+                                    # template = cv2.resize(template,(810,540),interpolation = cv2.INTER_LINEAR)
+                                    # im0 = cv2.resize(im0,(810,540),interpolation = cv2.INTER_LINEAR)
+                                    # output_canvas = np.concatenate((template, im0), axis=1)
+                                    # cv2.imshow('canvas',output_canvas)
+                                    # cv2.waitKey(0)
 
                             all_detections.append(bboxes)
                             #the function 
@@ -991,7 +998,7 @@ def run(
                 #cv2.imshow('template', im_t)
                 #cv2.imshow(str(p), im0)
                 cv2.imshow('canvas',output_canvas)
-                cv2.waitKey(1)  # 1 millisecond
+                cv2.waitKey(0)  # 1 millisecond
 
             # Save results (image with detections)
             if save_vid:
