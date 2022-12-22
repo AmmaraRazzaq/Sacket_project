@@ -861,14 +861,14 @@ def run(
                                         # check the intersection of the ball with the goal post
                                     else:
                                         print("unknown cross location")
-                                        text = "unknown cross location"
+                                        # text = "unknown cross location"
 
                                     # check for goal
-                                    # is_in_goalpost = check(goal_points[0][0], goal_points[0][1], goal_points[1][0], goal_points[1][1], goal_points[2][0], goal_points[2][1], goal_points[3][0], goal_points[3][1], centre_x, centre_y)
-                                    # if is_in_goalpost:
-                                    #     txt = "ball is inside the goalpost"
-                                    # else:
-                                    #     txt = "ball is not in the goalpost"
+                                    is_in_goalpost = check(goal_points[0][0], goal_points[0][1], goal_points[1][0], goal_points[1][1], goal_points[2][0], goal_points[2][1], goal_points[3][0], goal_points[3][1], centre_x, centre_y)
+                                    if is_in_goalpost:
+                                        text = "It is a Goal"
+                                    else:
+                                        text = "It is a Goal"
                                     
                                     # debugging, draw goal post and ball centre point
                                     # debug_img = np.full((h, w, 3), (255,255,255), dtype='uint8')
