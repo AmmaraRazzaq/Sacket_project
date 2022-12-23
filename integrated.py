@@ -370,18 +370,15 @@ def shot_detection(last_ball_x, last_ball_y, x_center, y_center, min_dist, last_
                 
                 shot_flag = True
 
-                cv2.putText(im0, f'speed: {speed: .2f}; Acceleration: {acc: .2f}; Shot/Pass ', (50,  36), font, 
-                    fontScale, (0,0,0), thickness, cv2.LINE_AA)
-                cv2.putText(template, f'speed: {speed: .2f}; Acceleration: {acc: .2f}; Shot/Pass ', (50,  36), font, 
-                    fontScale, (0,0,0), thickness, cv2.LINE_AA)
+                # cv2.putText(im0, f'speed: {speed: .2f}; Acceleration: {acc: .2f}; Shot/Pass ', (50,  36), font, 
+                #     fontScale, (0,0,0), thickness, cv2.LINE_AA)
+                # cv2.putText(template, f'speed: {speed: .2f}; Acceleration: {acc: .2f}; Shot/Pass ', (50,  36), font, 
+                #     fontScale, (0,0,0), thickness, cv2.LINE_AA)
 
                 if traj_start == -1:
                     traj_start = (x_center, y_center)
                     shot_frame = frame_idx
 
-                # cv2.imshow("-", template)
-                # cv2.imshow(str(p), im0)
-                # cv2.waitKey(0)
                 template = cv2.resize(template,(810,540),interpolation = cv2.INTER_LINEAR)
                 im0 = cv2.resize(im0,(810,540),interpolation = cv2.INTER_LINEAR)
                 output_canvas = np.concatenate((template, im0), axis=1)
@@ -392,15 +389,12 @@ def shot_detection(last_ball_x, last_ball_y, x_center, y_center, min_dist, last_
         elif frame_idx - shot_frame > segment_thres:
             traj_end = (x_center, y_center)
 
-            cv2.line(im0, traj_start, traj_end, (0,0,0), 3)
-            cv2.line(template, traj_start, traj_end, (0,0,0), 3)
+            # cv2.line(im0, traj_start, traj_end, (0,0,0), 3)
+            # cv2.line(template, traj_start, traj_end, (0,0,0), 3)
 
             traj_start = -1
             shot_flag = False
 
-            # cv2.imshow("-", template)
-            # cv2.imshow(str(p), im0)
-            # cv2.waitKey(0)
             template = cv2.resize(template,(810,540),interpolation = cv2.INTER_LINEAR)
             im0 = cv2.resize(im0,(810,540),interpolation = cv2.INTER_LINEAR)
             output_canvas = np.concatenate((template, im0), axis=1)
@@ -932,6 +926,9 @@ def run(
             elif len(line_pts)!=4 and intersection and len(cross_locations)!=0 and len(goal_points)==0:
                 if not decision_made:
                     final_decision = cross_locations[-1]
+
+                    if final_decision in ["right", "left"]:
+                        final_decision = "It is a Shot Off Target"
                     
                     cv2.putText(template, final_decision, (50,50),cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 4, cv2.LINE_AA)
                     cv2.putText(im0, final_decision, (50,50),cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 4, cv2.LINE_AA)
