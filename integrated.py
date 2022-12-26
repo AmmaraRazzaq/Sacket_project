@@ -43,7 +43,6 @@ from math import *
 # remove duplicated stream handler to avoid duplicated logging
 logging.getLogger().removeHandler(logging.getLogger().handlers[0])
 
-
 from sklearn.linear_model import RANSACRegressor
 
 def centre(bbox):
@@ -343,37 +342,37 @@ def shot_detection(last_ball_x, last_ball_y, x_center, y_center, min_dist, last_
 
 
     e = euclidean_distance(last_ball_x, last_ball_y, x_center, y_center)
-    print("-----")
-    print("euclidean distance:",e)
-    print('-----')
+    # print("-----")
+    # print("euclidean distance:",e)
+    # print('-----')
 
     if e > min_dist:
 
-        print(frame_idx, last_f)
+        # print(frame_idx, last_f)
 
         speed = e/max((frame_idx - last_f), 1)
         acc = (speed - last_speed)/(frame_idx - last_f)
         last_speed = speed
  
-        print("#"*30)
-        print("speed: ", speed)
-        print("acceleration:", acc)
+        # print("#"*30)
+        # print("speed: ", speed)
+        # print("acceleration:", acc)
         
 
         last_f = frame_idx
 
 
-        print('#'*30)
+        # print('#'*30)
 
         if shot_flag == False:
             if acc > acc_thres: 
                 
                 shot_flag = True
 
-                # cv2.putText(im0, f'speed: {speed: .2f}; Acceleration: {acc: .2f}; Shot/Pass ', (50,  36), font, 
-                #     fontScale, (0,0,0), thickness, cv2.LINE_AA)
-                # cv2.putText(template, f'speed: {speed: .2f}; Acceleration: {acc: .2f}; Shot/Pass ', (50,  36), font, 
-                #     fontScale, (0,0,0), thickness, cv2.LINE_AA)
+                cv2.putText(im0, f'speed: {speed: .2f}; Acceleration: {acc: .2f}; Shot/Pass ', (50,  36), font, 
+                    fontScale, (0,0,0), thickness, cv2.LINE_AA)
+                cv2.putText(template, f'speed: {speed: .2f}; Acceleration: {acc: .2f}; Shot/Pass ', (50,  36), font, 
+                    fontScale, (0,0,0), thickness, cv2.LINE_AA)
 
                 if traj_start == -1:
                     traj_start = (x_center, y_center)
@@ -409,7 +408,6 @@ def deflection_detection(last_ball_x, last_ball_y, x_center, y_center, min_dist,
     fontScale = 1
     thickness = 2
 
-
     e = euclidean_distance(last_ball_x, last_ball_y, x_center, y_center)
     
     if e > min_dist:
@@ -422,8 +420,8 @@ def deflection_detection(last_ball_x, last_ball_y, x_center, y_center, min_dist,
         angle_diff = abs(angle - last_angle)
         last_angle = angle
 
-        print("angle:", angle)
-        print("angle change:", angle_diff)
+        # print("angle:", angle)
+        # print("angle change:", angle_diff)
 
         if angle_diff > angle_thres: 
             
@@ -482,8 +480,185 @@ def RanSac(queue):
     for i, pt in enumerate(queue):
         if not inlier_mask[i]:
             queue.remove(pt)
+
+
+def gms(im0, template, line_pts, goal_points, centre_pt, params): 
+    traj_points = params['traj_points']
+    line_flags = params['line_flags']
+    cross_locations = params['cross_locations']
+    intersection = params['intersection']
+    decision_made = params['decision_made']
+    prev_distance = params['prev_distance']
+    decreasing_distance_counter = params['decreasing_distance_counter']
+    increasing_distance_counter = params['increasing_distance_counter']
+
+
+    # print("len(line_pts): ", len(line_pts))
+    # print("len(goal_points: ", len(goal_points))
+
+    # if the line is visible
+    if len(line_pts) == 4 and not decision_made:
+        line_flag = ball_vs_line(line_pts[:2], line_pts[2:], centre_pt)
+        line_flags.append(line_flag)
+        # print("line_flag: ", line_flag)
+
+        # debug_img = np.full((h, w, 3), (255,255,255), dtype='uint8')
+        
+        # if line_flag:
+        #     traj_pt = pt
+        
+        # calculate intersection first time the ball crosses the line
+        if not line_flag and len(goal_points)==4 and not intersection:
+            intersection=True
+            intersect_x, intersect_y = line_intersection(traj_points[-1], traj_points[-5], goal_points[0], goal_points[3])
+            cross_location = traj_line_intersection((intersect_x,intersect_y), goal_points)                                   
+        
+        # the ball has crossed the line, keep checking the situation of the ball as the ball location is getting updated in each frame
+        if intersection:
+            if cross_location == 'right' or cross_location == 'left':
+                # print("cross location ", cross_location)
+                # keep checking if the ball stays outside the line
+                line_flag = ball_vs_line(line_pts[:2], line_pts[2:], centre_pt)
+                if not line_flag:
+                    decision = cross_location
+                else:
+                    decision = "ball came back"
+                
+            elif cross_location == 'inside':
+                # print("cross_location inside")
+                # keep checking if the ball stays in the goal post
+                is_in_goalpost = check(goal_points[0][0], goal_points[0][1], goal_points[1][0], goal_points[1][1], goal_points[2][0], goal_points[2][1], goal_points[3][0], goal_points[3][1], centre_x, centre_y)
+                if is_in_goalpost:
+                    decision = "It is a Goal"
+                else:
+                    decision = "no intersection with goalpost"
+            else:
+                # print("unknown cross location")
+                decision = "unknown"
+            
+            cross_locations.append(decision)
+        
+        else:
+            # the ball has not crossed the line yet 
+            # if the goal post is visible, well the line is visible, so that means the goal post is visible
+            # check if the trajectory of the ball is towards the goal post, calculate the trajectory line intersection with the last line
+            if len(traj_points) >= 5:
+                intersect_x, intersect_y = line_intersection(traj_points[-1], traj_points[-5], goal_points[0], goal_points[3])
+                cross_location = traj_line_intersection((intersect_x,intersect_y), goal_points) 
+                # check the distance of the latest traj point from the intersection point 
+                distance = euclidean_distance(traj_points[-1][0], traj_points[-1][1], intersect_x, intersect_y)
+                
+                if cross_location == "inside":
+                    # the ball is probably moving towards the goal post
+                    
+                    # check if this distance is increasing or decreasing
+                    # if distance is decreasing 
+                    if distance < prev_distance:
+                        prev_distance = distance
+                        decreasing_distance_counter += 1 
+                    elif distance > prev_distance:
+                        prev_distance = distance
+                        decreasing_distance_counter = 0 # reset the counter
+
+                    if decreasing_distance_counter >= 4:
+                        # if the ball is moving towards the goal post for continuous 25 frames
+                        # start looking for deflection in the ball, check when the ball starts moving away
+                        if distance > prev_distance:
+                            # the ball is now moving away from the goal
+                            prev_distance = distance
+                            increasing_distance_counter += 1
+                        else:
+                            prev_distance = distance
+                            increasing_distance_counter = 0 # reset the counter
+                    
+                    if increasing_distance_counter >= 3:
+                        # it is most probably a shot on target
+                        decision = "Shot on Target"
+                        cross_locations.append(decision)
+
+                elif cross_location in ['right','left'] and decreasing_distance_counter!=0:
+                    # the ball has started moving away from goal post, so its possible for cross location to change
+                    if decreasing_distance_counter >= 4:
+                        if distance > prev_distance:
+                            prev_distance = distance
+                            increasing_distance_counter += 1
+                        else:
+                            prev_distance = distance
+                            increasing_distance_counter = 0
+
+                    if increasing_distance_counter >= 3:
+                        decision = "Shot on Target"
+                        cross_locations.append(decision) 
+                        decision_made = True
+                        
+                        cv2.putText(template, decision, (50,50),cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 4, cv2.LINE_AA)
+                        cv2.putText(im0, decision, (50,50),cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 4, cv2.LINE_AA)
+                        template = cv2.resize(template,(810,540),interpolation = cv2.INTER_LINEAR)
+                        im0 = cv2.resize(im0,(810,540),interpolation = cv2.INTER_LINEAR)
+                        output_canvas = np.concatenate((template, im0), axis=1)
+                        cv2.imshow('canvas',output_canvas)
+                        cv2.waitKey(0) 
+            
+
+            # try:
+            #     cross_locations.append(decision)
+            # except:
+            #     pass
+
+            # if trajectory of the ball was detected for atleast two frames, check the distance of the latest point from the goal post, this distance should decrease for consecutive 25 frames
+
+    # once the line stops being visible, and the goal post stops being visible, but the ball had already crossed the line and some decisions were made, make the final decision
+    elif len(line_pts)!=4 and intersection and len(cross_locations)!=0 and len(goal_points)==0:
+        if not decision_made:
+            final_decision = cross_locations[-1]
+
+            if final_decision in ["right", "left"]:
+                final_decision = "It is a Shot Off Target"
+            elif final_decision == "no intersection with goalpost":
+                final_decision = "It is Shot on target"
+            
+            cv2.putText(template, final_decision, (50,50),cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 4, cv2.LINE_AA)
+            cv2.putText(im0, final_decision, (50,50),cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 4, cv2.LINE_AA)
+            template = cv2.resize(template,(810,540),interpolation = cv2.INTER_LINEAR)
+            im0 = cv2.resize(im0,(810,540),interpolation = cv2.INTER_LINEAR)
+            output_canvas = np.concatenate((template, im0), axis=1)
+            cv2.imshow('canvas',output_canvas)
+            cv2.waitKey(0) 
+            decision_made=True
+
+    # if the line and goal post stop being visible but the ball didn't cross the line, if cross_locations have been populated then probably it is shot on target
+    elif len(line_pts)!=4 and len(cross_locations)!=0 and len(goal_points)==0:
+        if decision_made:
+            final_decision = cross_locations[-1]
+            
+            cv2.putText(template, final_decision, (50,50),cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 4, cv2.LINE_AA)
+            cv2.putText(im0, final_decision, (50,50),cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 4, cv2.LINE_AA)
+            template = cv2.resize(template,(810,540),interpolation = cv2.INTER_LINEAR)
+            im0 = cv2.resize(im0,(810,540),interpolation = cv2.INTER_LINEAR)
+            output_canvas = np.concatenate((template, im0), axis=1)
+            cv2.imshow('canvas',output_canvas)
+            cv2.waitKey(0) 
+            # decision_made=True
     
+    else:
+        print("line is not visible")
+        print("decision_made: ", decision_made)
+        print("len(line_points): ", len(line_pts))
+        print("len(cross_locations): ", len(cross_locations))
+        print("len(goal_points): ", len(goal_points))
+
+
+    params['traj_points'] = traj_points
+    params['line_flags'] = line_flags
+    params['cross_locations'] = cross_locations
+    params['intersection'] = intersection
+    params['decision_made'] = decision_made
+    params['prev_distance'] = prev_distance
+    params['decreasing_distance_counter'] = decreasing_distance_counter
+    params['increasing_distance_counter'] = increasing_distance_counter
     
+    return params
+
 
 @torch.no_grad()
 def run(
@@ -520,7 +695,6 @@ def run(
         eval=False,  # run multi-gpu eval
 ):
 
-    
     # queue_count = 0
     source = str(source)
     save_img = not nosave and not source.endswith('.txt')  # save inference images
@@ -541,10 +715,6 @@ def run(
     save_dir = increment_path(Path(project) / exp_name, exist_ok=exist_ok)  # increment run
     (save_dir / 'tracks' if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
 
-    # import pdb; pdb.set_trace()
-
-    # print(yolo_weights_2)
-
     # Load model
     if eval:
         device = torch.device(int(device))
@@ -563,7 +733,6 @@ def run(
     stride2, names2, pt2 = model2.stride, model2.names, model2.pt
     imgsz2 = check_img_size(imgsz, s=stride2)  # check image size
 
-
     # Dataloader
     if webcam:
         show_vid = check_imshow()
@@ -574,7 +743,6 @@ def run(
         dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=pt)
         nr_sources = 1
     vid_path, vid_writer, txt_path = [None] * nr_sources, [None] * nr_sources, [None] * nr_sources
-
 
     # Second Dataloader 
     if webcam:
@@ -587,8 +755,6 @@ def run(
         nr_sources = 1
     vid_path, vid_writer, txt_path = [None] * nr_sources, [None] * nr_sources, [None] * nr_sources
 
-
-
     # Create as many strong sort instances as there are video sources
     tracker_list = []
     for i in range(nr_sources):
@@ -599,17 +765,12 @@ def run(
                 tracker_list[i].model.warmup()
     outputs = [None] * nr_sources
 
-
     # Run tracking
     model.warmup(imgsz=(1 if pt else nr_sources, 3, *imgsz))  # warmup
     model2.warmup(imgsz=(1 if pt2 else nr_sources, 3, *imgsz2))  # warmup
 
-
-
-
     dt, seen = [0.0, 0.0, 0.0, 0.0], 0
     curr_frames, prev_frames = [None] * nr_sources, [None] * nr_sources
-
 
     #-----------------------------
     queue = []
@@ -643,10 +804,6 @@ def run(
 
     stab_gap = 7
 
-    # last_angle = 0
-    # angle_thres = 50
-    # deflection_flag = False
-
     cold_start_thres = 5
     frame_count = 0
 
@@ -665,6 +822,22 @@ def run(
     cross_locations = []
     intersection = False # boolean variable indicating the ball has crossed the line
     decision_made = False
+    prev_distance = 0
+    decreasing_distance_counter=0
+    increasing_distance_counter=0
+    shot_detection_flag=False
+
+    params = {
+        'traj_points':[],
+        'line_flags':[],
+        'cross_locations':[], 
+        'intersection':False,
+        'decision_made':False,
+        'prev_distance':0,
+        'decreasing_distance_counter':0,
+        'increasing_distance_counter':0
+    }
+    
     for frame_idx, (path, im, im0s, vid_cap, s) in enumerate(dataset):
 
         # if frame_idx <500:
@@ -705,12 +878,10 @@ def run(
         #if gps is not None and len(gps):
 
         for i, det in enumerate(pred):  # detections per image
-
         
             seen += 1
             if webcam:  # nr_sources >= 1
                 p, im0, _ = path[i], im0s[i].copy(), dataset.count
-
 
                 p = Path(p)  # to Path
                 s += f'{i}: '
@@ -769,7 +940,7 @@ def run(
                 t5 = time_sync()
                 dt[3] += t5 - t4
 
-                # draw boxes for visualization
+                # draw boxes for visualization, if goal post is visible
                 if gps is not None and len(gps) and len(outputs[i]) > 0:
 
                     # if len(outputs[i]) > 1 or len(det) >1:
@@ -779,9 +950,9 @@ def run(
                     cand_count = 0
 
                     for j, (output, conf) in enumerate(zip(outputs[i], det[:, 4])):
-    
+                        # bounding boxes of ball
                         bboxes = output[0:4]
-                        print(bboxes)
+                        # print(bboxes)
 
                         id = output[4]
                         cls = output[5]
@@ -805,6 +976,8 @@ def run(
                             # annotator.box_label(bboxes, label, color=colors(c, True))
                             # annotator_t.box_label(bboxes, label, color=colors(c, True))
                             
+                            all_detections.append(bboxes)
+                            
                             # draw bounding box around the ball
                             annotator.box_label(bboxes, label, color=(0,0,0))
                             annotator_t.box_label(bboxes, label, color=(0,0,0))
@@ -815,11 +988,6 @@ def run(
                             last_ball_x = x_center
                             last_ball_y = y_center
 
-                            # centre point of ball bounding box
-                            centre_x, centre_y = centre(bboxes)
-                            pt = (centre_x, centre_y) 
-                            traj_points.append(pt)
-
                             if len(queue):
                                 dist = euclidean_distance(queue[-1][0], queue[-1][1], x_center, y_center)
 
@@ -829,14 +997,20 @@ def run(
                             else:
                                 temp_cand.append((x_center, y_center, 1))
 
-                    print("all_detections: ", all_detections)
-                    
+
+                    # print("all_detections: ", all_detections)
+                            
                     last_ball_x, last_ball_y, x_center, y_center = remove_false_positives(queue, temp_cand, x_stab, y_stab) 
 
                     traj_start, traj_end, shot_frame, shot_flag, last_speed, last_f, im0, template = shot_detection(last_ball_x, last_ball_y, x_center, y_center, min_dist, last_f, frame_idx, im0, p, last_speed, traj_start, traj_end, shot_frame, shot_flag, segment_thres, acc_thres, template)
 
                     #last_angle, deflection_flag, shot_flag, traj_start = deflection_detection(last_ball_x, last_ball_y, x_center, y_center, min_dist, angle_thres, last_angle, p, im0, shot_flag, deflection_flag, traj_start, traj_end)
 
+                    # centre point of ball bounding box after removing false positives
+                    # centre_x, centre_y = centre(bboxes)
+                    centre_pt = (x_center, y_center) 
+                    traj_points.append(centre_pt)
+                    
                     font = cv2.FONT_HERSHEY_SIMPLEX
                     fontScale = 1 
                     thickness = 1
@@ -849,22 +1023,29 @@ def run(
                         else:
                             cv2.circle(im0, (int (tr[0] -  x_stab), int(tr[1] - y_stab)), 4, (0, 0, 0), -1)
                             cv2.circle(template, (int (tr[0] -  x_stab), int(tr[1] - y_stab)), 4, (0, 0, 0), -1)
-                    
+                            
                         if l== len(queue) - 1:
                             # cv2.putText(im0, f'True Ball', (tr[0], tr[1]), font, fontScale, (0,0,0), thickness, cv2.LINE_AA)
                             # cv2.putText(template, f'True Ball', (tr[0], tr[1]), font, fontScale, (0,0,0), thickness, cv2.LINE_AA)
                             pass
-                                
-                            
+                                                                 
                         if save_crop:
                             txt_file_name = txt_file_name if (isinstance(path, list) and len(path) > 1) else ''
                             save_one_box(bboxes, imc, file=save_dir / 'crops' / txt_file_name / names[c] / f'{id}' / f'{p.stem}.jpg', BGR=True)
-                
-                
-                LOGGER.info(f'{s}Done. yolo:({t3 - t2:.3f}s), {tracking_method}:({t5 - t4:.3f}s)')
 
+                    # we have access to x_center, y_center and shot_flag here, insert GMS here, line_pts and goal_points are being returned at 4th indent
+                    # print(shot_flag)
+                    # once the shot flag becomes true keep it true for the rest of the video for now
+                    if shot_flag or shot_detection_flag:
+                        shot_detection_flag=True
+                        params = gms(im0, template, line_pts, goal_points, centre_pt, params)
+                        traj_points =  params['traj_points']
+                        cross_locations = params['cross_locations']
+
+                # LOGGER.info(f'{s}Done. yolo:({t3 - t2:.3f}s), {tracking_method}:({t5 - t4:.3f}s)')
+            
             else:
-                print(frame_count)
+                # print(frame_count)
                 frame_count = frame_count + 1
 
                 if frame_count >= cold_start_thres:
@@ -872,78 +1053,7 @@ def run(
                     
                 #strongsort_list[i].increment_ages()
                 LOGGER.info('No detections')
-                #strongsort_list[i].increment_ages()
-                                            
-
-##################################################### GMS ###############################################################################################
-                        
-            print("len(line_pts): ", len(line_pts))
-            print("len(goal_points: ", len(goal_points))
-
-            # if the line is visible
-            if len(line_pts) == 4:
-                line_flag = ball_vs_line(line_pts[:2], line_pts[2:], pt)
-                line_flags.append(line_flag)
-                print("line_flag: ", line_flag)
-
-                # debug_img = np.full((h, w, 3), (255,255,255), dtype='uint8')
-                
-                if line_flag:
-                    traj_pt = pt
-                
-                # calculate intersection first time the ball crosses the line
-                if not line_flag and len(goal_points)==4 and not intersection:
-                    intersection=True
-                    intersect_x, intersect_y = line_intersection(traj_points[-1], traj_points[-5], goal_points[0], goal_points[3])
-                    cross_location = traj_line_intersection((intersect_x,intersect_y), goal_points)                                   
-                
-                # keep checking the situation of the ball as the ball location is getting updated in each frame
-                if intersection:
-                    if cross_location == 'right' or cross_location == 'left':
-                        print("cross location ", cross_location)
-                        # keep checking if the ball stays outside the line
-                        line_flag = ball_vs_line(line_pts[:2], line_pts[2:], pt)
-                        if not line_flag:
-                            decision = cross_location
-                        else:
-                            decision = "ball came back"
-                        
-                    elif cross_location == 'inside':
-                        print("cross_location inside")
-                        # keep checking if the ball stays in the goal post
-                        is_in_goalpost = check(goal_points[0][0], goal_points[0][1], goal_points[1][0], goal_points[1][1], goal_points[2][0], goal_points[2][1], goal_points[3][0], goal_points[3][1], centre_x, centre_y)
-                        if is_in_goalpost:
-                            decision = "It is a Goal"
-                        else:
-                            decision = "no Goal"
-                    else:
-                        print("unknown cross location")
-                        decision = "unknown"
-                    
-                    cross_locations.append(decision)
-
-            # once the line stops being visible, and the goal post stops being visible, but the ball had already crossed the line and some decisions were made, make the final decision
-            elif len(line_pts)!=4 and intersection and len(cross_locations)!=0 and len(goal_points)==0:
-                if not decision_made:
-                    final_decision = cross_locations[-1]
-
-                    if final_decision in ["right", "left"]:
-                        final_decision = "It is a Shot Off Target"
-                    
-                    cv2.putText(template, final_decision, (50,50),cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 4, cv2.LINE_AA)
-                    cv2.putText(im0, final_decision, (50,50),cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 4, cv2.LINE_AA)
-                    template = cv2.resize(template,(810,540),interpolation = cv2.INTER_LINEAR)
-                    im0 = cv2.resize(im0,(810,540),interpolation = cv2.INTER_LINEAR)
-                    output_canvas = np.concatenate((template, im0), axis=1)
-                    cv2.imshow('canvas',output_canvas)
-                    cv2.waitKey(0) 
-                    decision_made=True
-            else:
-                print("line is not visible")
-
-            # all_detections.append(bboxes)
-
-##################################################### GMS ###############################################################################################
+                #strongsort_list[i].increment_ages()                                    
 
             # Stream results
             im0 = annotator.result()
@@ -983,8 +1093,8 @@ def run(
 
             prev_frames[i] = curr_frames[i]
     
-    # analyze cross_locations
-    print(cross_locations)
+    # analyze cross_locations once all the frames are processed
+    # print(cross_locations)
     # Print results
     t = tuple(x / seen * 1E3 for x in dt)  # speeds per image
     LOGGER.info(f'Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS, %.1fms {tracking_method} update per image at shape {(1, 3, *imgsz)}' % t)

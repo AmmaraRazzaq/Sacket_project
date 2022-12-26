@@ -1,0 +1,4 @@
+default message here: Parse error at "'+https:/'": Expected string_end
+Successfully loaded pretrained weights from "/home/omno/ammara/shot_detection1/weights/osnet_x0_25_msmt17.pt"
+** The following layers are discarded due to unmatched keys or layer size: ['classifier.weight', 'classifier.bias']
+line is not visible
