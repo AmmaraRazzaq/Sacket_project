@@ -830,7 +830,7 @@ def run(
     consec_missed_detect_count=0
     first_missed_detect_flag=False
     frame_no_at_missed_detect=0
-    queue = []
+    fp_queue = []
     num_missed_detections=0
 
     params = {
@@ -846,9 +846,7 @@ def run(
     
     for frame_idx, (path, im, im0s, vid_cap, s) in enumerate(dataset):
 
-        # if frame_idx <500:
-        #     continue
-        
+        #region
         template = np.full((h, w, 3), (255,255,255), dtype='uint8')
         
         t1 = time_sync()
@@ -880,8 +878,7 @@ def run(
         dt[2] += time_sync() - t3
         gps = pred2[0]
 
-        # Process detections
-        #if gps is not None and len(gps):
+        #endregion
 
         for i, det in enumerate(pred):  # detections per image
         
@@ -913,9 +910,6 @@ def run(
 
             annotator = Annotator(im0, line_width=line_thickness, pil=not ascii)
             annotator_t = Annotator(template, line_width=line_thickness, pil=not ascii)
-            
-            #if cfg.STRONGSORT.ECC:  # camera motion compensation
-            #    strongsort_list[i].tracker.camera_update(prev_frames[i], curr_frames[i])
 
             ######################## goal post model ################################
                     
@@ -926,13 +920,15 @@ def run(
             if det is not None and len(det):
 
                 frame_count = 0 
+                temp_cand = []
                 
                 # Rescale boxes from img_size to im0 size
                 det[:, :4] = scale_coords(im.shape[2:], det[:, :4], im0.shape).round()  # xyxy
 
-                queue_old = queue
-                queue, num_missed_detections, _ = falsepositive_removal_with_filling(queue, det[:, :4], consec_missed_detect_count)
-                # reset if passed and returned count is the same
+                # False Positive Removal
+                bboxes = reversed(det) 
+                queue_old = fp_queue 
+                fp_queue, num_missed_detections, _ = falsepositive_removal_with_filling(fp_queue, bboxes, consec_missed_detect_count)
                 if num_missed_detections == consec_missed_detect_count:
                     consec_missed_detect_count=0
 
@@ -941,89 +937,44 @@ def run(
                     n = (det[:, -1] == c).sum()  # detections per class
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
 
-                # pass detections to strongsort
-                t4 = time_sync()
-                outputs[i] = tracker_list[i].update(det.cpu(), im0)
-                t5 = time_sync()
-                dt[3] += t5 - t4
+                for *xyxy, conf, cls in reversed(det):
+                    bbox = xyxy
+                    all_detections.append(bbox)
 
-                # draw boxes for visualization, if goal post is visible
-                if gps is not None and len(gps) and len(outputs[i]) > 0:
+                    if len(queue):
+                        dist = euclidean_distance(queue[-1][0], queue[-1][1], x_center, y_center)
 
-                    # if len(outputs[i]) > 1 or len(det) >1:
-                    #     import pdb; pdb.set_trace()
+                        if dist < threshold_false_positive:
+                            temp_cand.append((x_center, y_center, dist))
                     
-                    temp_cand = []
-                    cand_count = 0
+                    else:
+                        temp_cand.append((x_center, y_center, 1))
 
-                    for j, (output, conf) in enumerate(zip(outputs[i], det[:, 4])):
-                        # bounding boxes of ball
-                        bboxes = output[0:4]
-                        # print(bboxes)
-
-                        id = output[4]
-                        cls = output[5]
-
-                        if save_txt:
-                            # to MOT format
-                            bbox_left = output[0]
-                            bbox_top = output[1]
-                            bbox_w = output[2] - output[0]
-                            bbox_h = output[3] - output[1]
-                            # Write MOT compliant results to file
-                            with open(txt_path + '.txt', 'a') as f:
-                                f.write(('%g ' * 10 + '\n') % (frame_idx + 1, id, bbox_left,  # MOT format
-                                                            bbox_top, bbox_w, bbox_h, -1, -1, -1, i))
-
-                        if True: # save_vid or save_crop: #or show_vid:  # Add bbox to image
-                            c = int(cls)  # integer class
-                            id = int(id)  # integer id
-                            label = None if hide_labels else (f'{id} {names[c]}' if hide_conf else \
-                                (f'{id} {conf:.2f}' if hide_class else f'{id} {names[c]} {conf:.2f}'))
-                            # annotator.box_label(bboxes, label, color=colors(c, True))
-                            # annotator_t.box_label(bboxes, label, color=colors(c, True))
+                    
+                    
+                    if True: # save_vid or save_crop: #or show_vid:  # Add bbox to image
+                        c = int(cls)  # integer class
+                        id = int(id)  # integer id
+                        label = None if hide_labels else (f'{id} {names[c]}' if hide_conf else \
+                            (f'{id} {conf:.2f}' if hide_class else f'{id} {names[c]} {conf:.2f}'))
+                         # draw bounding box around the ball
+                        annotator.box_label(bbox, label, color=(0,0,0))
+                        annotator_t.box_label(bbox, label, color=(0,0,0))
                             
-                            all_detections.append(bboxes)
-                            
-                            # draw bounding box around the ball
-                            annotator.box_label(bboxes, label, color=(0,0,0))
-                            annotator_t.box_label(bboxes, label, color=(0,0,0))
+                    
+                    x_center = int((bbox[0]+bbox[2])/2)
+                    y_center = int((bbox[1]+bbox[3])/2)
 
-                            x_center = int((bboxes[0]+bboxes[2])/2)
-                            y_center = int((bboxes[1]+bboxes[3])/2)
-
-                            last_ball_x = x_center
-                            last_ball_y = y_center
-
-                            if len(queue):
-                                dist = euclidean_distance(queue[-1][0], queue[-1][1], x_center, y_center)
-
-                                if dist < threshold_false_positive:
-                                    temp_cand.append((x_center, y_center, dist))
-                            
-                            else:
-                                temp_cand.append((x_center, y_center, 1))
-
-
-                    # print("all_detections: ", all_detections)
-                            
+                    last_ball_x = x_center
+                    last_ball_y = y_center
+                    
                     last_ball_x, last_ball_y, x_center, y_center = remove_false_positives(queue, temp_cand, x_stab, y_stab) 
 
                     traj_start, traj_end, shot_frame, shot_flag, last_speed, last_f, im0, template = shot_detection(last_ball_x, last_ball_y, x_center, y_center, min_dist, last_f, frame_idx, im0, p, last_speed, traj_start, traj_end, shot_frame, shot_flag, segment_thres, acc_thres, template)
 
                     #last_angle, deflection_flag, shot_flag, traj_start = deflection_detection(last_ball_x, last_ball_y, x_center, y_center, min_dist, angle_thres, last_angle, p, im0, shot_flag, deflection_flag, traj_start, traj_end)
 
-                    # centre point of ball bounding box after removing false positives
-                    # centre_x, centre_y = centre(bboxes)
-                    centre_pt = (x_center, y_center) 
-                    traj_points.append(centre_pt)
-                    
-                    font = cv2.FONT_HERSHEY_SIMPLEX
-                    fontScale = 1 
-                    thickness = 1
-
                     for l, tr in enumerate(queue):
-
                         if shot_flag:
                             cv2.circle(im0, (int (tr[0] -  x_stab), int(tr[1] - y_stab)), 4, (0, 0, 255), -1)
                             cv2.circle(template, (int (tr[0] -  x_stab), int(tr[1] - y_stab)), 4, (0, 0, 255), -1)
@@ -1040,25 +991,22 @@ def run(
                             txt_file_name = txt_file_name if (isinstance(path, list) and len(path) > 1) else ''
                             save_one_box(bboxes, imc, file=save_dir / 'crops' / txt_file_name / names[c] / f'{id}' / f'{p.stem}.jpg', BGR=True)
 
-                    # we have access to x_center, y_center and shot_flag here, insert GMS here, line_pts and goal_points are being returned at 4th indent
-                    # print(shot_flag)
-                    # once the shot flag becomes true keep it true for the rest of the video for now
+                    # centre point of ball bounding box after removing false positives
+                    centre_pt = (x_center, y_center) 
+                    traj_points.append(centre_pt)
+                    
                     if shot_flag or shot_detection_flag:
                         shot_detection_flag=True
                         params = gms(im0, template, line_pts, goal_points, centre_pt, params)
                         traj_points =  params['traj_points']
                         cross_locations = params['cross_locations']
-
-                # LOGGER.info(f'{s}Done. yolo:({t3 - t2:.3f}s), {tracking_method}:({t5 - t4:.3f}s)')
             
             else:
-                # print(frame_count)
                 frame_count = frame_count + 1
 
                 if frame_count >= cold_start_thres:
                     frame_count = fresh_start(queue)
                     
-                #strongsort_list[i].increment_ages()
                 LOGGER.info('No detections')
                 
                 if not first_missed_detect_flag:
@@ -1068,18 +1016,14 @@ def run(
                 elif frame_idx - frame_no_at_missed_detect == 1:
                     # we have a consecutive missed detection
                     consec_missed_detect_count += 1
-                    frame_no_at_missed_detect = frame_idx
+                    frame_no_at_missed_detect = frame_idx 
                 else:
                     # the missed detection is not consecutive
                     first_missed_detect_flag=False
                     consec_missed_detect_count = 0 # reset the counter 
 
                 queue_old=queue
-                queue, num_missed_detections, status = falsepositive_removal_with_filling(queue, [[]], consec_missed_detect_count)
-                # if num_missed_detections == consec_missed_detect_count:
-                #     consec_missed_detect_count=0
-                         
-                #strongsort_list[i].increment_ages()                                    
+                queue, num_missed_detections, status = falsepositive_removal_with_filling(queue, [[]], consec_missed_detect_count)                                  
 
             # Stream results
             im0 = annotator.result()
@@ -1089,8 +1033,6 @@ def run(
                 im_t = cv2.resize(im_t,(810,540),interpolation = cv2.INTER_LINEAR)
                 im0 = cv2.resize(im0,(810,540),interpolation = cv2.INTER_LINEAR)
                 output_canvas = np.concatenate((im_t, im0), axis=1)
-                #cv2.imshow('template', im_t)
-                #cv2.imshow(str(p), im0)
                 cv2.imshow('canvas',output_canvas)
                 cv2.waitKey(1)  # 1 millisecond
 
