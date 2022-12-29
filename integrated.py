@@ -940,17 +940,17 @@ def run(
                 for *xyxy, conf, cls in reversed(det):
                     bbox = xyxy
                     all_detections.append(bbox)
-
+                    
+                    #region
                     if len(queue):
                         dist = euclidean_distance(queue[-1][0], queue[-1][1], x_center, y_center)
 
                         if dist < threshold_false_positive:
                             temp_cand.append((x_center, y_center, dist))
-                    
+     
                     else:
                         temp_cand.append((x_center, y_center, 1))
-
-                    
+                    #endregion
                     
                     if True: # save_vid or save_crop: #or show_vid:  # Add bbox to image
                         c = int(cls)  # integer class
@@ -961,7 +961,6 @@ def run(
                         annotator.box_label(bbox, label, color=(0,0,0))
                         annotator_t.box_label(bbox, label, color=(0,0,0))
                             
-                    
                     x_center = int((bbox[0]+bbox[2])/2)
                     y_center = int((bbox[1]+bbox[3])/2)
 
@@ -1022,8 +1021,8 @@ def run(
                     first_missed_detect_flag=False
                     consec_missed_detect_count = 0 # reset the counter 
 
-                queue_old=queue
-                queue, num_missed_detections, status = falsepositive_removal_with_filling(queue, [[]], consec_missed_detect_count)                                  
+                queue_old=fp_queue
+                fp_queue, num_missed_detections, status = falsepositive_removal_with_filling(fp_queue, [[]], consec_missed_detect_count)                                  
 
             # Stream results
             im0 = annotator.result()
