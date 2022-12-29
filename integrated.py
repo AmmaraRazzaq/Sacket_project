@@ -979,11 +979,12 @@ def run(
                                                                  
                         if save_crop:
                             txt_file_name = txt_file_name if (isinstance(path, list) and len(path) > 1) else ''
-                            save_one_box(bboxes, imc, file=save_dir / 'crops' / txt_file_name / names[c] / f'{id}' / f'{p.stem}.jpg', BGR=True)
+                            save_one_box(bbox, imc, file=save_dir / 'crops' / txt_file_name / names[c] / f'{id}' / f'{p.stem}.jpg', BGR=True)
 
                     # centre point of ball bounding box after removing false positives
                     centre_pt = (x_center, y_center) 
                     traj_points.append(centre_pt)
+                    params['traj_points'] = traj_points
                     
                     if shot_flag or shot_detection_flag:
                         shot_detection_flag=True
