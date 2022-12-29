@@ -902,8 +902,6 @@ def run(
                     txt_file_name = p.parent.name  # get folder name containing current img
                     save_path = str(save_dir / p.parent.name)  # im.jpg, vid.mp4, ...
 
-            curr_frames[i] = im0
-
             txt_path = str(save_dir / 'tracks' / txt_file_name)  # im.txt
             s += '%gx%g ' % im.shape[2:]  # print string
             imc = im0.copy() if save_crop else im0  # for save_crop
@@ -926,11 +924,11 @@ def run(
                 det[:, :4] = scale_coords(im.shape[2:], det[:, :4], im0.shape).round()  # xyxy
 
                 # False Positive Removal
-                bboxes = reversed(det) 
-                queue_old = fp_queue 
-                fp_queue, num_missed_detections, _ = falsepositive_removal_with_filling(fp_queue, bboxes, consec_missed_detect_count)
-                if num_missed_detections == consec_missed_detect_count:
-                    consec_missed_detect_count=0
+                # bboxes = reversed(det) 
+                # queue_old = fp_queue 
+                # fp_queue, num_missed_detections, _ = falsepositive_removal_with_filling(fp_queue, bboxes, consec_missed_detect_count)
+                # if num_missed_detections == consec_missed_detect_count:
+                #     consec_missed_detect_count=0
 
                 # Print results
                 for c in det[:, -1].unique():
@@ -941,7 +939,16 @@ def run(
                     bbox = xyxy
                     all_detections.append(bbox)
                     
-                    #region
+                    if True: # save_vid or save_crop: #or show_vid:  # Add bbox to image
+                        annotator.box_label(bbox, color=(0,0,0))
+                        annotator_t.box_label(bbox, color=(0,0,0))
+                            
+                    x_center = int((bbox[0]+bbox[2])/2)
+                    y_center = int((bbox[1]+bbox[3])/2)
+
+                    last_ball_x = x_center
+                    last_ball_y = y_center
+
                     if len(queue):
                         dist = euclidean_distance(queue[-1][0], queue[-1][1], x_center, y_center)
 
@@ -950,22 +957,6 @@ def run(
      
                     else:
                         temp_cand.append((x_center, y_center, 1))
-                    #endregion
-                    
-                    if True: # save_vid or save_crop: #or show_vid:  # Add bbox to image
-                        c = int(cls)  # integer class
-                        id = int(id)  # integer id
-                        label = None if hide_labels else (f'{id} {names[c]}' if hide_conf else \
-                            (f'{id} {conf:.2f}' if hide_class else f'{id} {names[c]} {conf:.2f}'))
-                         # draw bounding box around the ball
-                        annotator.box_label(bbox, label, color=(0,0,0))
-                        annotator_t.box_label(bbox, label, color=(0,0,0))
-                            
-                    x_center = int((bbox[0]+bbox[2])/2)
-                    y_center = int((bbox[1]+bbox[3])/2)
-
-                    last_ball_x = x_center
-                    last_ball_y = y_center
                     
                     last_ball_x, last_ball_y, x_center, y_center = remove_false_positives(queue, temp_cand, x_stab, y_stab) 
 
@@ -1021,8 +1012,8 @@ def run(
                     first_missed_detect_flag=False
                     consec_missed_detect_count = 0 # reset the counter 
 
-                queue_old=fp_queue
-                fp_queue, num_missed_detections, status = falsepositive_removal_with_filling(fp_queue, [[]], consec_missed_detect_count)                                  
+                # queue_old=fp_queue
+                # fp_queue, num_missed_detections, status = falsepositive_removal_with_filling(fp_queue, [[]], consec_missed_detect_count)                                  
 
             # Stream results
             im0 = annotator.result()
@@ -1057,8 +1048,6 @@ def run(
                     
                 vid_writer[i].write(im0) 
                 template_writer.write(im_t)
-
-            prev_frames[i] = curr_frames[i]
     
     # analyze cross_locations once all the frames are processed
     print(cross_locations)
