@@ -44,6 +44,7 @@ from math import *
 logging.getLogger().removeHandler(logging.getLogger().handlers[0])
 
 from sklearn.linear_model import RANSACRegressor
+from fpremoval import falsepositive_removal_with_filling
 
 def centre(bbox):
     """bbox is an np array"""
@@ -826,6 +827,11 @@ def run(
     decreasing_distance_counter=0
     increasing_distance_counter=0
     shot_detection_flag=False
+    consec_missed_detect_count=0
+    first_missed_detect_flag=False
+    frame_no_at_missed_detect=0
+    queue = []
+    num_missed_detections=0
 
     params = {
         'traj_points':[],
@@ -923,11 +929,12 @@ def run(
                 
                 # Rescale boxes from img_size to im0 size
                 det[:, :4] = scale_coords(im.shape[2:], det[:, :4], im0.shape).round()  # xyxy
-                
-                # pts = det[:, :4].cpu().detach().tolist() # corners of goal post
-                # print("pts: ", pts)
-                # draw a rectangle from these corners 
-                # cv2.polylines(template, pts, isClosed=True, color=[0,0,255], thickness=2)
+
+                queue_old = queue
+                queue, num_missed_detections, _ = falsepositive_removal_with_filling(queue, det[:, :4], consec_missed_detect_count)
+                # reset if passed and returned count is the same
+                if num_missed_detections == consec_missed_detect_count:
+                    consec_missed_detect_count=0
 
                 # Print results
                 for c in det[:, -1].unique():
@@ -1053,6 +1060,25 @@ def run(
                     
                 #strongsort_list[i].increment_ages()
                 LOGGER.info('No detections')
+                
+                if not first_missed_detect_flag:
+                    first_missed_detect_flag=True
+                    frame_no_at_missed_detect=frame_idx
+                    consec_missed_detect_count += 1
+                elif frame_idx - frame_no_at_missed_detect == 1:
+                    # we have a consecutive missed detection
+                    consec_missed_detect_count += 1
+                    frame_no_at_missed_detect = frame_idx
+                else:
+                    # the missed detection is not consecutive
+                    first_missed_detect_flag=False
+                    consec_missed_detect_count = 0 # reset the counter 
+
+                queue_old=queue
+                queue, num_missed_detections, status = falsepositive_removal_with_filling(queue, [[]], consec_missed_detect_count)
+                # if num_missed_detections == consec_missed_detect_count:
+                #     consec_missed_detect_count=0
+                         
                 #strongsort_list[i].increment_ages()                                    
 
             # Stream results
@@ -1094,7 +1120,7 @@ def run(
             prev_frames[i] = curr_frames[i]
     
     # analyze cross_locations once all the frames are processed
-    # print(cross_locations)
+    print(cross_locations)
     # Print results
     t = tuple(x / seen * 1E3 for x in dt)  # speeds per image
     LOGGER.info(f'Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS, %.1fms {tracking_method} update per image at shape {(1, 3, *imgsz)}' % t)
